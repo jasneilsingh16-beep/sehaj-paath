@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sehaj Paath</title>
+<meta name="description" content="Sri Guru Granth Sahib Ji, all 1,430 angs, for sehaj paath. Works offline.">
+<meta name="theme-color" content="#14110e">
+<meta name="color-scheme" content="dark light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Paath">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="preload" href="fonts/gurmukhi.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header id="top">
+  <button id="openSheet" class="ang-btn" aria-haspopup="dialog" aria-label="Jump, today's target and settings">
+    <span class="ang-word" lang="pa">ਅੰਗ</span>
+    <span class="ang-num" id="angG" lang="pa">੫੦੫</span>
+    <span class="ang-sub" id="angSub">505/1430</span>
+  </button>
+  <div class="today" id="todayLine" aria-live="polite"></div>
+  <div class="tools">
+    <button id="openSearch" class="icon" aria-label="Search">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+    </button>
+    <button id="openSaved" class="icon" aria-label="Saved lines and notes">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9 6.7 19.7l1.1-5.9L3.5 9.7l5.9-.8z"/></svg>
+    </button>
+  </div>
+  <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
+</header>
+
+<main id="reader" tabindex="-1" aria-label="Ang"></main>
+
+<nav id="nav" aria-label="Change ang">
+  <button id="prev" aria-label="Previous ang">&#8249;</button>
+  <button id="next" aria-label="Next ang">&#8250;</button>
+</nav>
+
+<div id="scrim" hidden></div>
+<section id="sheet" role="dialog" aria-modal="true" aria-label="Jump, target and settings" hidden>
+  <div class="sheet-head">
+    <h2 id="sheetTitle">Sehaj Paath</h2>
+    <button id="closeSheet" aria-label="Close">Done</button>
+  </div>
+  <div id="sheetBody"></div>
+</section>
+
+<script src="app.js"></script>
+</body>
+</html>
