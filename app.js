@@ -6,7 +6,7 @@
   var DEFAULTS = {
     startAng: 505, endAng: 1430, perDay: 48, startDate: "2026-11-22",
     theme: "dark", eng: true, lari: false, vish: true, gsize: 28, esize: 17,
-    pos: 505, done: 504, day: "", base: 504
+    pos: 505, done: 504, day: "", base: 504, rec: []
   };
 
   /* ---------- storage (never assume localStorage works) ---------- */
@@ -94,6 +94,34 @@
     return indexP;
   }
 
+  /* ---------- study sources: extra English per line, only where the database has it ---------- */
+  var SRC = {
+    pad: ["Word meanings", "Sahib Singh, pad arth. AI English rendering, not yet checked line by line", 1],
+    ss: ["Meaning in full", "Sahib Singh. AI English rendering, not yet checked line by line", 1],
+    sk: ["Sant Singh Khalsa", "Published translation, modernised wording", 0],
+    mm: ["Manmohan Singh", "Published translation, modernised wording", 0],
+    ko: ["Surinder Singh Kohli", "Published translation, modernised wording", 0],
+    js: ["Jodh Singh", "Published translation, modernised wording", 0],
+    fw: ["Faridkot Wala", "AI English rendering of the Punjabi teeka", 1],
+    jg: ["Ratan Singh Jaggi", "AI English rendering of the Punjabi teeka", 1],
+    bv: ["Bhai Vir Singh", "AI English rendering of the Punjabi teeka", 1],
+    my: ["My translation", "Your own", 0],
+    ai: ["AI translation", "AI-written", 1]
+  };
+  var studyIdxP = null, studyCache = {}, studyCur = {};
+  function getStudyIdx() {
+    if (!studyIdxP) studyIdxP = getJSON("study-index.json").catch(function () { studyIdxP = null; return []; });
+    return studyIdxP;
+  }
+  function getStudy(n) {
+    var s = chunkStart(n);
+    return getStudyIdx().then(function (ix) {
+      if (ix.indexOf(s) < 0) return {};
+      if (!studyCache[s]) studyCache[s] = getJSON("s" + ("000" + s).slice(-4) + ".json").catch(function () { delete studyCache[s]; return {}; });
+      return studyCache[s];
+    }).then(function (d) { return d[String(n)] || {}; });
+  }
+
   /* ---------- reader ---------- */
   var reader = $("reader"), seq = 0, cur = { n: 0, items: [] }, selId = null;
   function markCls(id) { var f = fav[id]; return f ? (f.s ? " sv" : "") + (f.n ? " nt" : "") : ""; }
@@ -108,21 +136,32 @@
     o = o || {};
     n = clamp(Math.round(n), 1, LAST);
     st.pos = n; save();
-    var my = ++seq; selId = null;
+    var my = ++seq; selId = null; studyCur = {}; heads = [];
     paintHeader(n);
+    noteRecent(n);
     $("prev").disabled = n <= 1;
     $("next").disabled = n >= LAST;
     getAng(n).then(function (items) {
       if (my !== seq) return;
       cur = { n: n, items: items };
       var h = items.map(tukHtml).join("");
+      var P = plan(), tgt = !P.before && !P.over && !P.finished && n === P.last;
       h += '<div class="endcap"><div class="orn" lang="pa">॥</div>Ang ' + n + " complete" +
+        (tgt ? '<div class="tend">Today\'s reading ends here</div><button id="finishDay" class="fin">Finish today</button>' : "") +
         (n < LAST ? '<button id="endNext">Next ang &rsaquo;</button>' : "") + "</div>";
       reader.innerHTML = h;
       var b = $("endNext"); if (b) b.addEventListener("click", goNext);
+      var fd = $("finishDay"); if (fd) fd.addEventListener("click", finishDay);
       var hit = o.id && reader.querySelector('.tuk[data-id="' + o.id + '"]');
       if (hit) { hit.classList.add("hit"); hit.scrollIntoView({ block: "center" }); }
       else if (!o.keep) window.scrollTo(0, 0);
+      collectHeads(n, my);
+      getStudy(n).then(function (m) {
+        if (my !== seq) return;
+        studyCur = m;
+        Object.keys(m).forEach(function (id) { var el = reader.querySelector('.tuk[data-id="' + id + '"]'); if (el && !/band|hdr|mangal/.test(el.className)) el.classList.add("xs"); });
+        if (selId) { var a = reader.querySelector(".tuk.sel .act"); if (a) a.outerHTML = actHtml(selId); }
+      });
       if (n < LAST) getAng(n + 1).catch(function () {});
       if (n > 1) getAng(n - 1).catch(function () {});
     }).catch(function () {
@@ -132,6 +171,74 @@
   }
   function goNext() { if (st.pos >= LAST) return; if (st.pos === st.done + 1) st.done = st.pos; show(st.pos + 1); }
   function goPrev() { show(st.pos - 1); }
+
+  /* ---------- shabad strip: which raag / Guru / ghar you are in, kept in view while scrolling ---------- */
+  var heads = [], ctxPrev = { b: "", t: "" }, ctxShown = null, ctxRaf = 0;
+  // a "generic" heading only names the part (Pauri, Salok, a Guru); the raag or bani above it is the real context
+  function isGen(l) { return /^(Pauri|Salok|Slok|Shalok)(\s|$)/.test(l) || /^Guru [A-Za-z ]+$/.test(l) || /^Bhagat(\s|$)/.test(l); }
+  function collectHeads(n, my) {
+    heads = [];
+    [].forEach.call(reader.querySelectorAll(".tuk.band, .tuk.hdr"), function (el) {
+      var it = itemById(el.dataset.id); if (it) heads.push({ el: el, l: it[2] });
+    });
+    // the heading that governs the top of this ang may be on an earlier ang
+    var m = n - 1, base = "", tail = "";
+    (function back() {
+      if (m < 1 || n - m > 14) { if (my === seq) { ctxPrev = { b: base, t: tail }; updateCtx(); } return; }
+      getAng(m).then(function (items) {
+        if (my !== seq) return;
+        for (var i = items.length - 1; i >= 0; i--) {
+          if (items[i][0] !== "B" && items[i][0] !== "H") continue;
+          var l = items[i][2];
+          if (isGen(l)) { if (!tail) tail = l; } else { base = l; break; }
+        }
+        if (base) { ctxPrev = { b: base, t: tail }; updateCtx(); return; }
+        m--; back();
+      }).catch(function () { if (my === seq) { ctxPrev = { b: base, t: tail }; updateCtx(); } });
+    })();
+    updateCtx();
+  }
+  function updateCtx() {
+    var line = $("ctx").getBoundingClientRect().bottom + 6, b = ctxPrev.b, t = ctxPrev.t, i, l;
+    for (i = 0; i < heads.length; i++) {
+      if (heads[i].el.getBoundingClientRect().top > line) break;
+      l = heads[i].l;
+      if (isGen(l)) t = l; else { b = l; t = ""; }
+    }
+    var lab = t && b ? b + " › " + t : (b || t);
+    if (lab !== ctxShown) { ctxShown = lab; $("ctxL").textContent = lab; }
+  }
+  window.addEventListener("scroll", function () {
+    if (ctxRaf) return;
+    ctxRaf = requestAnimationFrame(function () { ctxRaf = 0; updateCtx(); });
+  }, { passive: true });
+
+  /* ---------- recent angs (kept after a few seconds on an ang, so flipping past does not clutter it) ---------- */
+  var recT = 0;
+  function noteRecent(n) {
+    clearTimeout(recT);
+    recT = setTimeout(function () {
+      var r = (st.rec || []).filter(function (x) { return x !== n; });
+      r.unshift(n); st.rec = r.slice(0, 10); save();
+    }, 4000);
+  }
+
+  /* ---------- end of today's reading ---------- */
+  function finishDay() {
+    st.done = Math.max(st.done, st.pos); save(); paintHeader(st.pos);
+    openPanel("done", "Today"); renderDone();
+  }
+  function renderDone() {
+    var P = plan(), s = '<div class="sec done">';
+    if (st.done >= st.endAng) s += '<div class="big">Paath complete</div><p>Angs ' + st.startAng + " to " + st.endAng + " read. Waheguru.</p>";
+    else {
+      s += '<div class="big">Today\'s reading is complete</div>';
+      s += "<p>Ang " + P.first + " to " + P.last + ".</p>";
+      s += "<p>Tomorrow starts at Ang " + Math.min(st.endAng, Math.max(P.last, st.done) + 1) + ".</p>";
+    }
+    s += '<button class="btn primary" data-act="closeDone">Close</button></div>';
+    body.innerHTML = s;
+  }
 
   /* ---------- favourites and notes ---------- */
   function itemById(id) { for (var i = 0; i < cur.items.length; i++) if (cur.items[i][4] === id) return cur.items[i]; return null; }
@@ -150,7 +257,8 @@
   function actHtml(id) {
     var f = fav[id];
     return '<div class="act" data-id="' + id + '"><button data-act="save" aria-pressed="' + !!(f && f.s) + '">' + (f && f.s ? "&#9733; Saved" : "&#9734; Save") +
-      '</button><button data-act="note">' + (f && f.n ? "Edit note" : "Add note") + '</button><button data-act="copy">Copy</button></div>';
+      '</button><button data-act="note">' + (f && f.n ? "Edit note" : "Add note") + "</button>" +
+      (studyCur[id] ? '<button data-act="study">Study</button>' : "") + '<button data-act="copy">Copy</button></div>';
   }
   function selectTuk(el) {
     var old = reader.querySelector(".tuk.sel");
@@ -170,6 +278,8 @@
         paintMarks(id); var a = el.querySelector(".act"); if (a) a.outerHTML = actHtml(id);
       } else if (b.dataset.act === "note") {
         openNote(id, cur.n, it[1], it[2], "close");
+      } else if (b.dataset.act === "study") {
+        openStudy(id, it);
       } else if (b.dataset.act === "copy") {
         copyText(it[1].replace(/[;.,]/g, "") + "\n" + it[2] + "\n(Ang " + cur.n + ")", function (ok) { b.textContent = ok ? "Copied" : "Hold to copy"; });
       }
@@ -357,6 +467,32 @@
     if (f) void 0;
   }
 
+  /* Study card: this line's other English sources, each labelled. Pad arth is split into word = meaning rows. */
+  var studyCtx = null;
+  function openStudy(id, it) {
+    studyCtx = { id: id, a: cur.n, g: it[1], e: it[2] };
+    openPanel("study", "Study", true); renderStudy();
+  }
+  function padHtml(t) {
+    return t.split(/\.\s+(?=[^.=]{1,60}=)/).map(function (p) {
+      var i = p.indexOf("=");
+      if (i < 0) return "<p>" + esc(p) + "</p>";
+      return '<div class="pw"><b>' + esc(p.slice(0, i).trim()) + "</b> " + esc(p.slice(i + 1).replace(/\.$/, "").trim()) + "</div>";
+    }).join("");
+  }
+  function renderStudy() {
+    var c = studyCtx, list = studyCur[c.id] || [], s = "";
+    s += '<div class="notebox"><div class="rg" lang="pa">' + gm(c.g, false, true) + '</div><p class="small">Ang ' + c.a + "</p></div>";
+    s += '<div class="srcb"><h4>Saroop English</h4><p class="st">' + en(c.e) + '</p><small>Modern English, AI-written from Sahib Singh\'s arth, not yet checked line by line</small></div>';
+    list.forEach(function (x) {
+      var m = SRC[x[0]] || [x[0], "", 0];
+      s += '<div class="srcb"><h4>' + esc(m[0]) + "</h4>" + (x[0] === "pad" ? padHtml(x[1]) : '<p class="st">' + esc(x[1]) + "</p>") +
+        "<small>" + esc(m[1]) + "</small></div>";
+    });
+    s += '<div class="row"><button class="btn" data-act="studyCopy">Copy all</button><span class="small" id="stmsg"></span></div>';
+    body.innerHTML = s;
+  }
+
   function seg(name, opts, curv) {
     return '<span class="seg" role="group">' + opts.map(function (o) {
       return '<button data-set="' + name + '" data-val="' + o[0] + '" aria-pressed="' + (String(curv) === String(o[0])) + '">' + o[1] + "</button>";
@@ -367,6 +503,9 @@
     ensureDay();
     var P = plan(), s = "";
     s += '<div class="sec"><h3>Jump to ang</h3><form class="go" id="goForm"><input id="goIn" type="number" inputmode="numeric" min="1" max="1430" placeholder="1 to 1430" aria-label="Ang number"><button class="btn primary" type="submit">Go</button></form></div>';
+
+    var rec = (st.rec || []).filter(function (x) { return x !== st.pos; }).slice(0, 8);
+    if (rec.length) s += '<div class="sec"><h3>Recent</h3><div class="chips">' + rec.map(function (x) { return '<button data-act="go" data-a="' + x + '">Ang ' + x + "</button>"; }).join("") + "</div></div>";
 
     s += '<div class="sec"><h3>Today</h3>';
     if (P.finished) {
@@ -501,6 +640,14 @@
     }
     if (act === "go") { goTo(+t.dataset.a, t.dataset.id); return; }
     if (act === "more") { moreN += 60; runAndShow(); return; }
+    if (act === "closeDone") { closePanel(); return; }
+    if (act === "studyCopy") {
+      var sc = studyCtx, parts = [sc.g.replace(/[;.,]/g, ""), "Saroop English: " + sc.e];
+      (studyCur[sc.id] || []).forEach(function (x) { parts.push((SRC[x[0]] ? SRC[x[0]][0] : x[0]) + ": " + x[1]); });
+      parts.push("(Ang " + sc.a + ")");
+      copyText(parts.join("\n"), function (ok) { $("stmsg").textContent = ok ? "Copied." : "Could not copy."; });
+      return;
+    }
     if (act === "editnote") { var x = fav[t.dataset.id]; if (x) openNote(t.dataset.id, x.a, x.g, x.e, "saved"); return; }
     if (act === "del") { if (window.confirm("Remove this saved line and its note?")) { delete fav[t.dataset.id]; saveFav(); paintMarks(t.dataset.id); renderSaved(); } return; }
     if (act === "copyAll") {
