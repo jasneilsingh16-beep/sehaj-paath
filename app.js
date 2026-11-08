@@ -72,19 +72,25 @@
   /* ---------- data ---------- */
   var cache = {};
   function chunkStart(n) { return Math.floor((n - 1) / CHUNK) * CHUNK + 1; }
+  /* The data files normally live in data/. If they were uploaded to the top level instead, use that. */
+  var baseP = null;
+  function base() {
+    if (!baseP) baseP = fetch("data/index.json").then(function (r) { return r.ok ? "data/" : ""; }, function () { return "data/"; });
+    return baseP;
+  }
+  function getJSON(name) {
+    return base().then(function (b) {
+      return fetch(b + name).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+    });
+  }
   function getChunk(s) {
-    if (!cache[s]) {
-      cache[s] = fetch("data/a" + ("000" + s).slice(-4) + ".json").then(function (r) {
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return r.json();
-      }).catch(function (e) { delete cache[s]; throw e; });
-    }
+    if (!cache[s]) cache[s] = getJSON("a" + ("000" + s).slice(-4) + ".json").catch(function (e) { delete cache[s]; throw e; });
     return cache[s];
   }
   function getAng(n) { return getChunk(chunkStart(n)).then(function (d) { return d[String(n)]; }); }
   var indexP = null;
   function getIndex() {
-    if (!indexP) indexP = fetch("data/index.json").then(function (r) { return r.json(); }).catch(function (e) { indexP = null; throw e; });
+    if (!indexP) indexP = getJSON("index.json").catch(function (e) { indexP = null; throw e; });
     return indexP;
   }
 
