@@ -227,3 +227,39 @@ textarea { width: 100%; text-align: left; min-height: 70px; font-size: 14px; }
 .notebox .rg b { font-weight: 700; } .notebox .rg .m { color: var(--ink-soft); } .notebox .rg .l { color: var(--ink-faint); } .notebox .rg .vn { color: var(--accent); }
 .notebox .re { font: 15px/1.45 ui-serif, Georgia, serif; color: var(--ink-soft); margin-top: 4px; }
 .notebox textarea { min-height: 150px; font-size: 17px; margin: 8px 0 12px; }
+
+/* Gutka themes (light and night): centred tuks like the printed gutka, no rules between tuks,
+   rahao as a soft band, strong vishraam weights, maroon header with saffron accents.
+   app.js sets data-g on <html> for both. */
+:root[data-theme="gutka"] {
+  --bg: #fbf6ec; --surface: #f3eadb; --ink: #2a1414; --ink-soft: #6b4a3a; --ink-faint: #9a7b6b;
+  --accent: #b5651d; --rule: #e6d8c3; --tint: rgba(224, 138, 30, 0.13); --ecard: transparent;
+  --head: #6e1f1f; --head-ink: #f4c26b; --head-soft: #f1dcc0;
+}
+:root[data-theme="gnight"] {
+  --bg: #12100e; --surface: #1e1915; --ink: #f1e6d2; --ink-soft: #c2b29a; --ink-faint: #85776a;
+  --accent: #e8a33d; --rule: #2e2620; --tint: rgba(232, 163, 61, 0.12); --ecard: #1c1713;
+  --head: #2a1212; --head-ink: #f0b860; --head-soft: #c9a98a;
+}
+:root[data-g] #top { background: var(--head); border-bottom-color: var(--head); }
+:root[data-g] .ang-num { color: var(--head-ink); }
+:root[data-g] .ang-word, :root[data-g] .ang-sub, :root[data-g] .today, :root[data-g] .icon { color: var(--head-soft); }
+:root[data-g] #ctx { color: var(--accent); border-bottom-color: var(--rule); }
+:root[data-g] .bar i { background: var(--head-ink); }
+:root[data-g] .tuk { text-align: center; border-bottom: 0; padding: 10px 0 12px; }
+:root[data-g] .g b { font-weight: 800; }
+:root[data-g] .g .m { font-weight: 700; }
+:root[data-g] .e { font-size: calc(var(--e) * 0.94); margin-top: 3px; }
+:root[data-theme="gnight"] .tuk:not(.band):not(.hdr):not(.mangal):not(.R) > .e {
+  background: var(--ecard); border-radius: 10px; padding: 6px 10px; display: inline-block; max-width: 100%;
+}
+:root[data-g] .tuk.R { background: var(--tint); border-left: 0; border-radius: 10px;
+  margin: 6px calc(var(--gap) * -0.5); padding: 10px calc(var(--gap) * 0.5) 12px; }
+:root[data-g] .tuk.R:has(+ .tuk.R) { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+:root[data-g] .tuk.R + .tuk.R { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+:root[data-g] .band::before, :root[data-g] .band::after { opacity: 0.8; }
+:root[data-g] .tuk.sel { margin: 0 calc(var(--gap) * -0.5); padding-left: calc(var(--gap) * 0.5); padding-right: calc(var(--gap) * 0.5); }
+:root[data-g] #nav button { color: var(--accent); }
+.row.th { flex-wrap: wrap; }
+.row.th .seg { width: 100%; }
+.row.th .seg button { flex: 1; padding: 9px 4px; line-height: 1.2; }

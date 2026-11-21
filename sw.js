@@ -1,6 +1,6 @@
 /* Offline: precache the whole app (shell + font + all ang files + study files) on first load.
    Data files are normally in data/; if they were uploaded to the top level instead, that is used instead. */
-var VERSION = "sehaj-v4";
+var VERSION = "sehaj-v5";
 var SHELL = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest",
   "fonts/gurmukhi.woff2", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 var DATA = ["index.json", "study-index.json"];

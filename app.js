@@ -5,7 +5,7 @@
   var LAST = 1430, CHUNK = 10, KEY = "sehaj.v1", FKEY = "sehaj.fav.v1";
   var DEFAULTS = {
     startAng: 505, endAng: 1430, perDay: 48, startDate: "2026-11-22",
-    theme: "dark", eng: true, lari: false, vish: true, gsize: 28, esize: 17,
+    theme: "gutka", eng: true, lari: false, vish: true, gsize: 28, esize: 17,
     pos: 505, done: 504, day: "", base: 504, rec: []
   };
 
@@ -159,7 +159,8 @@
       getStudy(n).then(function (m) {
         if (my !== seq) return;
         studyCur = m;
-        Object.keys(m).forEach(function (id) { var el = reader.querySelector('.tuk[data-id="' + id + '"]'); if (el && !/band|hdr|mangal/.test(el.className)) el.classList.add("xs"); });
+        Object.keys(m).forEach(function (id) { var el = reader.querySelector('.tuk[data-id="' + id + '"]'); /* "+" marks lines with word meanings or a teeka; the Study button itself is there for every line with any source */
+          if (el && !/band|hdr|mangal/.test(el.className) && m[id].some(function (x) { return x[0] === "pad" || x[0] === "ss" || x[0] === "fw"; })) el.classList.add("xs"); });
         if (selId) { var a = reader.querySelector(".tuk.sel .act"); if (a) a.outerHTML = actHtml(selId); }
       });
       if (n < LAST) getAng(n + 1).catch(function () {});
@@ -328,10 +329,11 @@
   }
 
   /* ---------- theme ---------- */
-  var THEME_COLOR = { dark: "#14110e", paper: "#f6f0e3", dim: "#0a0806" };
+  var THEME_COLOR = { dark: "#14110e", paper: "#f6f0e3", dim: "#0a0806", gutka: "#6e1f1f", gnight: "#2a1212" };
   function applyLook() {
     var r = document.documentElement;
     r.setAttribute("data-theme", st.theme);
+    if (st.theme === "gutka" || st.theme === "gnight") r.setAttribute("data-g", ""); else r.removeAttribute("data-g");
     r.style.setProperty("--g", st.gsize + "px");
     r.style.setProperty("--e", st.esize + "px");
     var m = document.querySelector('meta[name="theme-color"]');
@@ -540,7 +542,7 @@
     s += '<div class="row"><span class="lbl">English</span>' + seg("eng", [[1, "On"], [0, "Off"]], st.eng ? 1 : 0) + "</div>";
     s += '<div class="row"><span class="lbl">Words</span>' + seg("lari", [[0, "Padched"], [1, "Larivaar"]], st.lari ? 1 : 0) + "</div>";
     s += '<div class="row"><span class="lbl">Vishraam</span>' + seg("vish", [[1, "Shown"], [0, "Plain"]], st.vish ? 1 : 0) + "</div>";
-    s += '<div class="row"><span class="lbl">Theme</span>' + seg("theme", [["dark", "Dark"], ["dim", "Dim"], ["paper", "Paper"]], st.theme) + "</div>";
+    s += '<div class="row th"><span class="lbl">Theme</span>' + seg("theme", [["gutka", "Gutka"], ["gnight", "Gutka night"], ["dark", "Dark"], ["dim", "Dim"], ["paper", "Paper"]], st.theme) + "</div>";
     s += '<div class="row"><span class="lbl">Gurmukhi size</span><span class="seg"><button data-size="gsize" data-d="-2" aria-label="Smaller Gurmukhi">A&minus;</button><button data-size="gsize" data-d="2" aria-label="Larger Gurmukhi">A+</button></span></div>';
     s += '<div class="row"><span class="lbl">English size</span><span class="seg"><button data-size="esize" data-d="-1" aria-label="Smaller English">A&minus;</button><button data-size="esize" data-d="1" aria-label="Larger English">A+</button></span></div>';
     s += '<div class="preview" lang="pa">' + gm("ਸਤਿਗੁਰ ਪ੍ਰਸਾਦਿ; ਹਰਿ ਨਾਮੁ, ਸਚੁ ਸੋਇ ॥੧॥", st.lari, st.vish) + "</div>";
