@@ -6,7 +6,8 @@
   var DEFAULTS = {
     startAng: 505, endAng: 1430, perDay: 48, startDate: "2026-11-22",
     theme: "gutka", eng: true, lari: false, vish: true, gsize: 28, esize: 17,
-    pos: 505, done: 504, day: "", base: 504, rec: []
+    pos: 505, done: 504, day: "", base: 504, rec: [],
+    awake: true, hide: true, line: "", lineA: 0, pace: []
   };
 
   /* ---------- storage (never assume localStorage works) ---------- */
@@ -49,8 +50,9 @@
   /* ---------- Gurmukhi rendering ---------- */
   /* The data holds ; , . as vishraam marks after a word. They are shown as weight/colour, as in the
      printed saroop PDFs, not as characters. Everything else is the database text, untouched. */
-  function gm(text, lari, vish) {
-    var words = text.split(" "), out = [], i, w, m, h, cls, n = 0;
+  function gm(text, lari, vish, gl) {
+    var words = text.split(" "), out = [], i, w, m, h, cls, n = 0, wi = -1, open = {}, close = {};
+    (gl || []).forEach(function (x, j) { open[x[0]] = j; close[x[0] + x[1] - 1] = 1; });
     for (i = 0; i < words.length; i++) {
       w = words[i];
       if (!w) continue;
@@ -59,6 +61,9 @@
       if (/^॥.*॥$/.test(w) || /^[੦-੯]+$/.test(w)) h = '<span class="vn">' + h + "</span>";
       else if (m && vish) h = m[2] === ";" ? "<b>" + h + "</b>" : '<span class="' + (m[2] === "," ? "m" : "l") + '">' + h + "</span>";
       if (lari) { cls = n % 2 ? ' class="w1"' : ""; h = "<span" + cls + ">" + h + "</span>"; n++; }
+      wi++;
+      if (wi in open) h = '<span class="gw" data-gi="' + open[wi] + '">' + h;
+      if (close[wi]) h += "</span>";
       out.push(h);
     }
     var s = out.join(lari ? "​" : " ");
@@ -134,8 +139,10 @@
   }
   function show(n, o) {
     o = o || {};
+    if (typeof hideGloss === "function") hideGloss();
     n = clamp(Math.round(n), 1, LAST);
-    st.pos = n; save();
+    if (st.lineA !== n) { st.line = ""; st.lineA = n; }
+    st.pos = n; save(); angT = 0; showBars();
     var my = ++seq; selId = null; studyCur = {}; heads = [];
     paintHeader(n);
     noteRecent(n);
@@ -148,17 +155,28 @@
       var P = plan(), tgt = !P.before && !P.over && !P.finished && n === P.last;
       h += '<div class="endcap"><div class="orn" lang="pa">॥</div>Ang ' + n + " complete" +
         (tgt ? '<div class="tend">Today\'s reading ends here</div><button id="finishDay" class="fin">Finish today</button>' : "") +
-        (n < LAST ? '<button id="endNext">Next ang &rsaquo;</button>' : "") + "</div>";
+        (n < LAST ? '<button id="endNext" class="nextcard"><span>Next ang</span><b lang="pa">' + gdig(n + 1) + '</b><i>&rsaquo;</i></button>' : "") + "</div>";
       reader.innerHTML = h;
       var b = $("endNext"); if (b) b.addEventListener("click", goNext);
       var fd = $("finishDay"); if (fd) fd.addEventListener("click", finishDay);
       var hit = o.id && reader.querySelector('.tuk[data-id="' + o.id + '"]');
+      var anc = !hit && o.anchor && reader.querySelector('.tuk[data-id="' + o.anchor + '"]');
       if (hit) { hit.classList.add("hit"); hit.scrollIntoView({ block: "center" }); }
+      else if (anc) { anc.scrollIntoView({ block: "start" }); }
+      else if (o.resume && st.line && (anc = reader.querySelector('.tuk[data-id="' + st.line + '"]'))) {
+        anc.scrollIntoView({ block: "start" }); anc.classList.add("back");
+        setTimeout(function () { anc.classList.remove("back"); }, 2500);
+      }
       else if (!o.keep) window.scrollTo(0, 0);
+      lastY = window.scrollY; showBars();
       collectHeads(n, my);
       getStudy(n).then(function (m) {
         if (my !== seq) return;
         studyCur = m;
+        Object.keys(m).forEach(function (id) {
+          var gl = glOf(id), it = gl && itemById(id), ge = it && reader.querySelector('.tuk[data-id="' + id + '"] > .g');
+          if (ge) ge.innerHTML = gm(it[1], st.lari, st.vish, gl);
+        });
         Object.keys(m).forEach(function (id) { var el = reader.querySelector('.tuk[data-id="' + id + '"]'); /* "+" marks lines with word meanings or a teeka; the Study button itself is there for every line with any source */
           if (el && !/band|hdr|mangal/.test(el.className) && m[id].some(function (x) { return x[0] === "pad" || x[0] === "ss" || x[0] === "fw"; })) el.classList.add("xs"); });
         if (selId) { var a = reader.querySelector(".tuk.sel .act"); if (a) a.outerHTML = actHtml(selId); }
@@ -170,7 +188,7 @@
       reader.innerHTML = '<div class="err">Could not load Ang ' + n + ". Check the connection once, then it works offline.</div>";
     });
   }
-  function goNext() { if (st.pos >= LAST) return; if (st.pos === st.done + 1) st.done = st.pos; show(st.pos + 1); }
+  function goNext() { if (st.pos >= LAST) return; notePace(); if (st.pos === st.done + 1) st.done = st.pos; show(st.pos + 1); }
   function goPrev() { show(st.pos - 1); }
 
   /* ---------- shabad strip: which raag / Guru / ghar you are in, kept in view while scrolling ---------- */
@@ -210,9 +228,71 @@
     if (lab !== ctxShown) { ctxShown = lab; $("ctxL").textContent = lab; }
   }
   window.addEventListener("scroll", function () {
+    lastAct = Date.now();
     if (ctxRaf) return;
-    ctxRaf = requestAnimationFrame(function () { ctxRaf = 0; updateCtx(); });
+    ctxRaf = requestAnimationFrame(function () { ctxRaf = 0; updateCtx(); onScrollBars(); rememberLine(); });
   }, { passive: true });
+
+  /* ---------- the tuk at the top of the screen, so the app reopens exactly there ---------- */
+  var lineT = 0;
+  function topTuk() {
+    var y = Math.max(0, $("ctx").getBoundingClientRect().bottom), els = reader.querySelectorAll(".tuk"), i;
+    for (i = 0; i < els.length; i++) if (els[i].getBoundingClientRect().bottom > y + 8) return els[i].dataset.id;
+    return "";
+  }
+  function rememberLine() {
+    clearTimeout(lineT);
+    lineT = setTimeout(function () {
+      if (cur.n !== st.pos) return;
+      var id = window.scrollY < 40 ? "" : topTuk();
+      if (id !== st.line) { st.line = id; st.lineA = st.pos; save(); }
+    }, 600);
+  }
+
+  /* ---------- header and buttons step aside while reading down; a scroll up or a tap brings them back ---------- */
+  var lastY = 0, barsHidden = false;
+  function showBars() { if (barsHidden) { barsHidden = false; document.documentElement.classList.remove("nobars"); } }
+  function hideBars() { if (!barsHidden) { barsHidden = true; document.documentElement.classList.add("nobars"); } }
+  function onScrollBars() {
+    var y = window.scrollY, dy = y - lastY;
+    var atEnd = window.innerHeight + y >= document.documentElement.scrollHeight - 80;
+    if (!st.hide || y < 120 || atEnd || !sheet.hidden) showBars();
+    else if (dy > 12) hideBars();
+    else if (dy < -12) showBars();
+    if (Math.abs(dy) > 12 || y < 120) lastY = y;
+  }
+
+  /* ---------- keep the screen on while the app is open (iOS 16.4+); released when it is hidden ---------- */
+  var wake = null;
+  function wantWake() {
+    if (!st.awake || !navigator.wakeLock || document.visibilityState !== "visible" || wake) return;
+    navigator.wakeLock.request("screen").then(function (w) {
+      wake = w; w.addEventListener("release", function () { wake = null; });
+    }).catch(function () { wake = null; });
+  }
+  function dropWake() { if (wake) { wake.release().catch(function () {}); wake = null; } }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") wantWake(); });
+  document.addEventListener("touchend", wantWake, { passive: true });
+  document.addEventListener("click", wantWake);
+
+  /* ---------- reading pace: active seconds per ang, kept on this phone only ---------- */
+  var angT = 0, lastAct = Date.now();
+  ["touchstart", "keydown"].forEach(function (ev) { document.addEventListener(ev, function () { lastAct = Date.now(); }, { passive: true }); });
+  setInterval(function () {
+    if (document.visibilityState === "visible" && sheet.hidden && Date.now() - lastAct < 90000) angT += 5;
+  }, 5000);
+  function notePace() {
+    if (angT >= 30 && angT <= 1800) { st.pace = (st.pace || []).concat([angT]).slice(-40); save(); }
+    angT = 0;
+  }
+  function perAng() {
+    var p = (st.pace || []).slice().sort(function (a, b) { return a - b; });
+    return p.length >= 3 ? p[Math.floor(p.length / 2)] : 0;
+  }
+  function dur(sec) {
+    var m = Math.max(1, Math.round(sec / 60)), h = Math.floor(m / 60);
+    return h ? h + "h " + ("0" + (m % 60)).slice(-2) + "m" : m + " min";
+  }
 
   /* ---------- recent angs (kept after a few seconds on an ang, so flipping past does not clutter it) ---------- */
   var recT = 0;
@@ -267,7 +347,36 @@
     if (!el || el.dataset.id === selId) { selId = null; return; }
     selId = el.dataset.id; el.classList.add("sel"); el.insertAdjacentHTML("beforeend", actHtml(selId));
   }
+  function glOf(id) { var l = studyCur[id] || [], i; for (i = 0; i < l.length; i++) if (l[i][0] === "gl") return l[i][1]; return null; }
+  var glossEl = null;
+  function hideGloss() {
+    if (!glossEl) return;
+    glossEl.remove(); glossEl = null;
+    var w = reader.querySelector(".gw.on"); if (w) w.classList.remove("on");
+  }
+  function showGloss(w, id) {
+    var gl = glOf(id), x = gl && gl[+w.dataset.gi]; if (!x) return;
+    hideGloss();
+    w.classList.add("on");
+    glossEl = document.createElement("div");
+    glossEl.id = "gloss"; glossEl.setAttribute("role", "status");
+    glossEl.innerHTML = '<div class="gh" lang="pa">' + esc(w.textContent) + '</div><div class="gm"' + (x[3] === "pa" ? ' lang="pa"' : "") + ">" + esc(x[2]) + "</div>" +
+      '<small>Sahib Singh, pad arth' + (x[3] === "en" ? " (AI English, not yet checked)" : " (Punjabi)") + "</small>";
+    glossEl.addEventListener("click", hideGloss);
+    document.body.appendChild(glossEl);
+    showBars();
+  }
+  window.addEventListener("scroll", function () { if (glossEl && Math.abs(window.scrollY - glossY) > 160) hideGloss(); }, { passive: true });
+  var glossY = 0;
+
   reader.addEventListener("click", function (e) {
+    var gw = e.target.closest(".gw");
+    if (gw && !e.target.closest(".act")) {
+      var tk = gw.closest(".tuk");
+      if (glossEl && gw.classList.contains("on")) { hideGloss(); return; }
+      glossY = window.scrollY; showGloss(gw, tk.dataset.id); return;
+    }
+    if (glossEl) { hideGloss(); return; }
     var b = e.target.closest(".act button");
     var el = e.target.closest(".tuk");
     if (!el) return;
@@ -289,6 +398,7 @@
     if (e.target.closest(".act")) return;
     var sel = window.getSelection && String(window.getSelection());
     if (sel) return;                       // user is selecting text
+    showBars();
     if (el.classList.contains("band") || el.classList.contains("hdr") || el.classList.contains("mangal")) return;
     selectTuk(el);
   });
@@ -324,7 +434,8 @@
     else if (P.over) { line = P.left + " angs left"; frac = P.done / P.total; }
     else if (P.left === 0) { line = "Today done"; frac = 1; }
     else { line = P.left + " to go today"; frac = P.frac; }
-    $("todayLine").textContent = line;
+    var pa = perAng(), left = P.finished || P.before || P.over ? 0 : P.left;
+    $("todayLine").innerHTML = esc(line) + (pa && left ? "<small>≈ " + dur(pa * left) + " left</small>" : "");
     $("barFill").style.width = Math.round(frac * 100) + "%";
   }
 
@@ -449,7 +560,7 @@
   var sheet = $("sheet"), scrim = $("scrim"), body = $("sheetBody"), opener = $("openSheet"), mode = "menu", sMode = "auto", lastFocus = null;
   var noteCtx = null, savedFilter = "", moreN = 60, lastOut = null;
   function openPanel(m, title, tall) {
-    mode = m; $("sheetTitle").textContent = title; sheet.classList.toggle("tall", !!tall);
+    mode = m; $("sheetTitle").textContent = title; sheet.classList.toggle("tall", !!tall); sheet.classList.toggle("drawer", m === "nav");
     sheet.hidden = false; scrim.hidden = false; sheet.scrollTop = 0;
     lastFocus = document.activeElement;
   }
@@ -461,6 +572,32 @@
     buildIndex().then(function () { runAndShow(); }).catch(function () {});
   }
   function openSaved() { openPanel("saved", "Saved", true); renderSaved(); }
+
+  /* Side menu: where you are in the Granth (the raag or section you are in, and where the next begins), banis, recent */
+  function openDrawer() {
+    openPanel("nav", "Contents"); renderDrawer();
+    getIndex().then(function (d) { browseData = d; if (mode === "nav" && !sheet.hidden) renderDrawer(); }).catch(function () {});
+  }
+  function renderDrawer() {
+    var s = '<div class="dq"><button data-act="mMenu">Today and settings</button><button data-act="mSearch">Search</button><button data-act="mSaved">Saved</button></div>';
+    var rec = (st.rec || []).filter(function (x) { return x !== st.pos; }).slice(0, 6);
+    if (rec.length) s += '<h4>Recent</h4><div class="chips">' + rec.map(function (x) { return '<button data-act="go" data-a="' + x + '">Ang ' + x + "</button>"; }).join("") + "</div>";
+    if (browseData) {
+      var C = browseData.contents, here = -1, i;
+      for (i = 0; i < C.length; i++) if (C[i].a <= st.pos) here = i;
+      if (here >= 0) {
+        var nx = C[here + 1];
+        s += '<div class="where"><small>You are in</small><b>' + esc(C[here].l) + "</b><small>Began at Ang " + C[here].a +
+          (nx ? " &middot; next section starts at Ang " + nx.a + " (" + (nx.a - st.pos) + " angs on)" : "") + "</small></div>";
+      }
+      s += "<h4>Raags and sections</h4>" + C.map(function (c, j) {
+        return '<button class="nm' + (j === here ? " here" : "") + '" data-act="go" data-a="' + c.a + '"><span>' + esc(c.l) + "</span><small>Ang " + c.a + "</small></button>";
+      }).join("");
+      s += "<h4>Banis</h4>" + browseData.banis.map(baniHtml).join("");
+    } else s += '<p class="small hint">Loading contents&hellip;</p>';
+    body.innerHTML = s;
+    var h = body.querySelector(".nm.here"); if (h) sheet.scrollTop = h.offsetTop - sheet.clientHeight / 2;
+  }
   function openNote(id, a, g, e, back) {
     var f = fav[id];
     noteCtx = { id: id, a: a, g: g, e: e, back: back };
@@ -486,7 +623,14 @@
     var c = studyCtx, list = studyCur[c.id] || [], s = "";
     s += '<div class="notebox"><div class="rg" lang="pa">' + gm(c.g, false, true) + '</div><p class="small">Ang ' + c.a + "</p></div>";
     s += '<div class="srcb"><h4>Saroop English</h4><p class="st">' + en(c.e) + '</p><small>Modern English, AI-written from Sahib Singh\'s arth, not yet checked line by line</small></div>';
+    var hasPad = list.some(function (x) { return x[0] === "pad"; }), gl = glOf(c.id), ws = c.g.split(" ").filter(Boolean);
+    if (!hasPad && gl) {
+      s += '<div class="srcb"><h4>Word meanings</h4>' + gl.map(function (x) {
+        return '<div class="pw"><b lang="pa">' + esc(ws.slice(x[0], x[0] + x[1]).join(" ").replace(/[;.,]/g, "")) + "</b> <span" + (x[3] === "pa" ? ' lang="pa"' : "") + ">" + esc(x[2]) + "</span></div>";
+      }).join("") + "<small>Sahib Singh, pad arth" + (gl.some(function (x) { return x[3] === "pa"; }) ? " (Punjabi)" : "") + "</small></div>";
+    }
     list.forEach(function (x) {
+      if (x[0] === "gl") return;
       var m = SRC[x[0]] || [x[0], "", 0];
       s += '<div class="srcb"><h4>' + esc(m[0]) + "</h4>" + (x[0] === "pad" ? padHtml(x[1]) : '<p class="st">' + esc(x[1]) + "</p>") +
         "<small>" + esc(m[1]) + "</small></div>";
@@ -542,6 +686,9 @@
     s += '<div class="row"><span class="lbl">English</span>' + seg("eng", [[1, "On"], [0, "Off"]], st.eng ? 1 : 0) + "</div>";
     s += '<div class="row"><span class="lbl">Words</span>' + seg("lari", [[0, "Padched"], [1, "Larivaar"]], st.lari ? 1 : 0) + "</div>";
     s += '<div class="row"><span class="lbl">Vishraam</span>' + seg("vish", [[1, "Shown"], [0, "Plain"]], st.vish ? 1 : 0) + "</div>";
+    s += '<div class="row"><span class="lbl">Keep screen on</span>' + seg("awake", [[1, "On"], [0, "Off"]], st.awake ? 1 : 0) + "</div>";
+    s += '<div class="row"><span class="lbl">Hide bars while reading</span>' + seg("hide", [[1, "On"], [0, "Off"]], st.hide ? 1 : 0) + "</div>";
+    s += '<p class="small">Tap the strip under the header to turn English on or off. Pinch the text to resize the Gurmukhi.</p>';
     s += '<div class="row th"><span class="lbl">Theme</span>' + seg("theme", [["gutka", "Gutka"], ["gnight", "Gutka night"], ["dark", "Dark"], ["dim", "Dim"], ["paper", "Paper"]], st.theme) + "</div>";
     s += '<div class="row"><span class="lbl">Gurmukhi size</span><span class="seg"><button data-size="gsize" data-d="-2" aria-label="Smaller Gurmukhi">A&minus;</button><button data-size="gsize" data-d="2" aria-label="Larger Gurmukhi">A+</button></span></div>';
     s += '<div class="row"><span class="lbl">English size</span><span class="seg"><button data-size="esize" data-d="-1" aria-label="Smaller English">A&minus;</button><button data-size="esize" data-d="1" aria-label="Larger English">A+</button></span></div>';
@@ -634,6 +781,7 @@
     if (t.dataset.set) {
       var k = t.dataset.set, v = t.dataset.val;
       if (k === "theme") st.theme = v; else st[k] = v === "1";
+      if (k === "awake") { if (st.awake) wantWake(); else dropWake(); }
       save(); rerender(); return;
     }
     if (t.dataset.size) {
@@ -642,10 +790,13 @@
     }
     if (act === "go") { goTo(+t.dataset.a, t.dataset.id); return; }
     if (act === "more") { moreN += 60; runAndShow(); return; }
+    if (act === "mMenu") { openMenu(); return; }
+    if (act === "mSearch") { openSearch(); return; }
+    if (act === "mSaved") { openSaved(); return; }
     if (act === "closeDone") { closePanel(); return; }
     if (act === "studyCopy") {
       var sc = studyCtx, parts = [sc.g.replace(/[;.,]/g, ""), "Saroop English: " + sc.e];
-      (studyCur[sc.id] || []).forEach(function (x) { parts.push((SRC[x[0]] ? SRC[x[0]][0] : x[0]) + ": " + x[1]); });
+      (studyCur[sc.id] || []).forEach(function (x) { if (x[0] !== "gl") parts.push((SRC[x[0]] ? SRC[x[0]][0] : x[0]) + ": " + x[1]); });
       parts.push("(Ang " + sc.a + ")");
       copyText(parts.join("\n"), function (ok) { $("stmsg").textContent = ok ? "Copied." : "Could not copy."; });
       return;
@@ -723,6 +874,7 @@
 
   /* ---------- events ---------- */
   opener.addEventListener("click", openMenu);
+  $("openNav").addEventListener("click", openDrawer);
   $("openSearch").addEventListener("click", openSearch);
   $("openSaved").addEventListener("click", openSaved);
   $("closeSheet").addEventListener("click", closePanel);
@@ -750,10 +902,35 @@
     if (Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 2.5 && dt < 700) { dx < 0 ? goNext() : goPrev(); }
   }, { passive: true });
 
+  /* tap the shabad strip: English on/off, staying on the same tuk */
+  $("ctx").addEventListener("click", function () {
+    var id = topTuk(); st.eng = !st.eng; save(); show(st.pos, { anchor: id, keep: true });
+  });
+
+  /* pinch on the text: Gurmukhi size, live; the page itself never zooms */
+  var pz = null;
+  function pdist(t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); }
+  document.addEventListener("touchstart", function (e) {
+    if (e.touches.length === 2 && sheet.hidden) pz = { d: pdist(e.touches) || 1, g: st.gsize, id: topTuk() };
+  }, { passive: true });
+  document.addEventListener("touchmove", function (e) {
+    if (!pz || e.touches.length !== 2) return;
+    e.preventDefault();
+    var g = clamp(Math.round(pz.g * pdist(e.touches) / pz.d), 20, 48);
+    if (g !== st.gsize) { st.gsize = g; document.documentElement.style.setProperty("--g", g + "px"); }
+  }, { passive: false });
+  document.addEventListener("touchend", function (e) {
+    if (!pz || e.touches.length) return;
+    var id = pz.id; pz = null; save();
+    var el = id && reader.querySelector('.tuk[data-id="' + id + '"]'); if (el) el.scrollIntoView({ block: "start" });
+  }, { passive: true });
+  document.addEventListener("gesturestart", function (e) { e.preventDefault(); });
+
   /* ---------- start ---------- */
   var h = parseInt((location.hash.match(/(\d+)/) || [])[1], 10);
   applyLook();
-  show(!isNaN(h) ? h : st.pos);
+  show(!isNaN(h) ? h : st.pos, { resume: isNaN(h) || h === st.pos });
+  wantWake();
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });

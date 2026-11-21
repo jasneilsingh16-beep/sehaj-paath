@@ -19,6 +19,9 @@
 </head>
 <body>
 <header id="top">
+  <button id="openNav" class="icon burger" aria-haspopup="dialog" aria-label="Contents: raags, banis, recent">
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
   <button id="openSheet" class="ang-btn" aria-haspopup="dialog" aria-label="Jump, today's target and settings">
     <span class="ang-word" lang="pa">ਅੰਗ</span>
     <span class="ang-num" id="angG" lang="pa">੫੦੫</span>
@@ -35,7 +38,7 @@
   </div>
   <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
 </header>
-<div id="ctx" aria-hidden="true"><span id="ctxL"></span></div>
+<div id="ctx" role="button" aria-label="Turn English on or off"><span id="ctxL"></span></div>
 
 <main id="reader" tabindex="-1" aria-label="Ang"></main>
 
